@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MemoryGraph: an assistant whose memory you can see and edit</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🕸️</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f4f6fa;--card:#fff;--ink:#1b2233;--muted:#5b6677;--line:#d9dfe8;--c0:#8995a8;--c1:#7c5cd6;--c2:#d9822b;--c3:#0f8b6d;--me:#e3eefb;--bad:#c2410c}
+@media (prefers-color-scheme:dark){:root{--bg:#0e1420;--card:#161e2d;--ink:#e7ecf4;--muted:#93a0b4;--line:#27324a;--c0:#7c879a;--c1:#a58cf0;--c2:#f0a35a;--c3:#3fc4a1;--me:#1f3350;--bad:#f08a5d}}
+*{box-sizing:border-box}
+html{height:100%}
+body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);font:15px/1.5 "IBM Plex Sans",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0)}
+main{max-width:1100px;margin:0 auto;padding:22px 14px 56px}
+h1{font-size:2rem;letter-spacing:-.02em;margin:0 0 4px}
+h2{font-size:1.05rem;margin:0 0 8px}
+.lead{color:var(--muted);margin:0 0 18px;max-width:70ch}
+.grid{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:16px;align-items:start}
+@media (max-width:860px){.grid{grid-template-columns:1fr}}
+section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:16px}
+#log{height:340px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:2px}
+.m{max-width:88%;padding:8px 11px;border-radius:10px;white-space:pre-wrap;word-break:break-word}
+.m.u{align-self:flex-end;background:var(--me)}
+.m.a{align-self:flex-start;background:var(--bg);border:1px solid var(--line)}
+.ev{display:block;color:var(--muted);font-size:.82rem;margin-top:4px}
+.row{display:flex;gap:8px;margin-top:10px}
+input[type=text]{flex:1;min-width:0;font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 11px}
+button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:7px 12px}
+button.pri{background:var(--c3);border-color:var(--c3);color:var(--card);font-weight:600}
+button.sm{padding:3px 8px;font-size:.85rem}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.chips button{border-radius:99px;font-size:.85rem;padding:4px 10px}
+:focus-visible{outline:3px solid var(--c3);outline-offset:2px}
+svg{width:100%;height:auto;display:block}
+.ed{stroke-width:1.8;stroke:var(--c3)}
+.ed.old{stroke:var(--c0);stroke-dasharray:5 4;opacity:.7}
+.el{font-size:10.5px;fill:var(--muted);paint-order:stroke;stroke:var(--card);stroke-width:4px;stroke-linejoin:round}
+.nt{font-size:12px;fill:var(--ink)}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.bar label{font-size:.9rem;color:var(--muted)}
+.fact{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;border-top:1px solid var(--line)}
+.fact:first-child{border-top:0}
+.fact .t{min-width:0;word-break:break-word}
+.fact.old .t{color:var(--muted);text-decoration:line-through}
+.tag{font-size:.75rem;color:var(--muted);border:1px solid var(--line);border-radius:99px;padding:0 7px;margin-left:6px;text-decoration:none;display:inline-block}
+.acts{display:flex;gap:4px;flex:none}
+.fact input{width:100%}
+.empty{color:var(--muted);margin:4px 0}
+.chk{width:100%;border-collapse:collapse;font-size:.9rem;margin-top:8px}
+.chk td,.chk th{text-align:left;padding:4px 6px;border-top:1px solid var(--line)}
+.ok{color:var(--c3);font-weight:600}.no{color:var(--bad);font-weight:600}
+.note{color:var(--muted);font-size:.85rem;margin:8px 0 0}
+</style>
+</head>
+<body>
+<main>
+  <h1>MemoryGraph</h1>
+  <p class="lead">Tell the assistant about yourself. It turns what you say into a knowledge graph, handles facts that change, and lets you inspect, edit, or delete every memory it holds.</p>
+  <div class="grid">
+    <div>
+      <section>
+        <h2>Chat</h2>
+        <div id="log" aria-live="polite"></div>
+        <div class="row"><input type="text" id="inp" placeholder="e.g. I live in Chennai" aria-label="Message" autocomplete="off"><button class="pri" id="send">Send</button></div>
+        <div class="chips" id="chips"></div>
+      </section>
+      <section>
+        <h2>Recall check</h2>
+        <p class="note" style="margin:0 0 8px">Replays a scripted conversation from scratch, then asks 8 questions.</p>
+        <button id="demo">Run demo and check</button>
+        <div id="check"></div>
+      </section>
+    </div>
+    <div>
+      <section>
+        <div class="bar"><h2 style="margin:0">Memory graph</h2><label><input type="checkbox" id="hist" checked> Show replaced facts</label></div>
+        <svg id="g" viewBox="0 0 600 430" role="img" aria-label="Knowledge graph of what the assistant remembers about you"></svg>
+      </section>
+      <section>
+        <div class="bar"><h2 style="margin:0">Stored memories</h2><button class="sm" id="clear">Clear all</button></div>
+        <div id="list"></div>
+        <p class="note">Saved in this browser only. Facts are extracted with simple language rules, not a language model.</p>
+      </section>
+    </div>
+  </div>
+</main>
+
+<script>
+(function(){
+var KEY="memorygraph-v1";
+var REL="sister|brother|mom|mother|dad|father|wife|husband|partner|friend|cousin|colleague|manager|boss";
+var PEOPLE=REL.split("|");
+var MULTI={allergic_to:1,likes:1,dislikes:1,learning:1};
+var STOP="lives stays is was has loves likes moved works works lives named called who that".split(" ");
+var PRON="i my she he they we it who that you".split(" ");
+var db={facts:[],n:1},log=[],editing=null;
+try{var raw=localStorage.getItem(KEY);if(raw){var p=JSON.parse(raw);if(p&&p.facts)db=p}}catch(e){}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){}}
+function $(i){return document.getElementById(i)}
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
+function tc(s){return s.replace(/\b([a-z])/g,function(c){return c.toUpperCase()})}
+function lc(s){return String(s).toLowerCase()}
+function nr(r){return r==="boss"?"manager":r==="mother"?"mom":r==="father"?"dad":r}
+function rl(r){return r.replace(/_/g," ")}
+function nm(n){return n==="user"?"You":n}
+function phr(s,r,o){
+  if(s!=="user")return s+(r==="lives_in"?" lives in ":" "+rl(r)+" ")+o;
+  var M={likes:"You like ",dislikes:"You dislike ",allergic_to:"You’re allergic to ",learning:"You’re learning ",lives_in:"You live in ",works_at:"You work at "};
+  if(M[r])return M[r]+o;
+  if(r==="manager"||PEOPLE.indexOf(r)>-1||r==="role"||r==="morning_drink"||/^favorite_/.test(r))return"Your "+rl(r).replace(/^favorite /,"favorite ")+" is "+o;
+  return"You "+rl(r)+" "+o;
+}
+function clean(v){
+  v=v.replace(/(,| near | close to | because | since | but ).*$/i,"").replace(/\s+(last (week|month|year)|these days|right now|now|recently|currently|today|too|as well)$/i,"").replace(/[.!?\s]+$/,"").replace(/^(the|a|an) /i,"").trim();
+  return v;
+}
+
+/* ---------- memory store ---------- */
+function cur(s,r){var a=db.facts.filter(function(f){return f.s===s&&f.r===r&&f.st==="active"});return a[a.length-1]||null}
+function prevOf(s,r){var a=db.facts.filter(function(f){return f.s===s&&f.r===r&&f.st==="old"});return a[a.length-1]||null}
+function all(s,r){return db.facts.filter(function(f){return f.s===s&&f.r===r&&f.st==="active"})}
+function addFact(s,r,o,src){
+  var dup=db.facts.filter(function(f){return f.s===s&&f.r===r&&lc(f.o)===lc(o)&&f.st==="active"})[0];
+  if(dup)return{k:"dup"};
+  var old=null;
+  if(!MULTI[r]&&r!=="lives_in_x"){db.facts.forEach(function(f){if(f.s===s&&f.r===r&&f.st==="active"){f.st="old";old=f}})}
+  var nf={id:db.n++,s:s,r:r,o:o,src:src,st:"active"};
+  db.facts.push(nf);
+  return{k:old?"upd":"new",f:nf,old:old};
+}
+
+/* ---------- rule-based extraction ---------- */
+function splitList(v){return v.split(/,| and /).map(clean).filter(Boolean)}
+function extract(sent){
+  var s=sent.replace(/[’]/g,"'").trim().replace(/^(also|and|so|hey|hi|btw|well|oh),?\s+/i,""),m,o=[];
+  function push(a,b,c){c=clean(c);if(c)o.push([a,b,c])}
+  if(m=s.match(/\bmy (?:new |old |current )?(?:manager|boss) is (.+)$/i)){push("user","manager",tc(m[1]));return o}
+  if(m=s.match(new RegExp("\\bmy ("+REL+") (?:lives|stays|is based|is living) in (.+)$","i"))){var n="My "+tc(nr(lc(m[1])));push("user",nr(lc(m[1])),n);push(n,"lives_in",tc(m[2]));return o}
+  if(m=s.match(new RegExp("\\bmy ("+REL+") (?:is |named |called )?([a-z][a-z'-]*)(?: (?:lives|stays|is based|is living) in (.+))?$","i"))){
+    if(STOP.indexOf(lc(m[2]))<0){var r=nr(lc(m[1])),nn=tc(m[2]);push("user",r,nn);if(m[3])push(nn,"lives_in",tc(m[3]));return o}
+  }
+  if(m=s.match(/^([a-z][a-z'-]*) (?:lives|stays|is based|is living|moved) (?:in|to) (.+)$/i)){if(PRON.indexOf(lc(m[1]))<0){push(tc(m[1]),"lives_in",tc(m[2]));return o}}
+  if(m=s.match(/\bmy morning drink is (.+)$/i)||s.match(/\bi (?:now |just )?(?:drink|switched to|have|prefer) (.+?) (?:in the morning|every morning|each morning|in the mornings|for breakfast)/i)){push("user","morning_drink",lc(m[1]));return o}
+  if(m=s.match(/\bi (?:now |currently )?(?:live|stay) in (.+)$/i)||s.match(/\bi(?:'m| am) (?:now |currently )?(?:living|based|staying) in (.+)$/i)||s.match(/\bi(?:'ve| have)? (?:just |recently )?(?:moved|relocated|shifted) to (.+)$/i)){push("user","lives_in",tc(clean(m[1])));return o}
+  if(m=s.match(/\bi (?:now |currently |just |recently )?(?:work|started working|started work|joined|worked)(?: at| for| in| with)? (.+)$/i)){
+    var v=m[1],q=v.match(/^(.+?) as (?:an? )?(.+)$/i);
+    if(q){push("user","works_at",tc(q[1]));push("user","role",lc(q[2]))}
+    else if(q=v.match(/^as (?:an? )?(.+)$/i))push("user","role",lc(q[1]));
+    else push("user","works_at",tc(v));
+    return o;
+  }
+  if(m=s.match(/\bi(?:'m| am) (?:also |really )?allergic to (.+)$/i)){splitList(lc(m[1])).forEach(function(x){push("user","allergic_to",x)});return o}
+  if(m=s.match(/\bi (?:really )?(?:hate|dislike|can't stand) (.+)$/i)){splitList(lc(m[1])).forEach(function(x){push("user","dislikes",x)});return o}
+  if(m=s.match(/\bi (?:really )?(?:love|like|enjoy|adore) (.+)$/i)){splitList(lc(m[1])).forEach(function(x){push("user","likes",x)});return o}
+  if(m=s.match(/\bi(?:'m| am) (?:currently )?learning (.+)$/i)){splitList(m[1]).forEach(function(x){push("user","learning",x)});return o}
+  if(m=s.match(/\bmy fav(?:ou?rite)? ([a-z ]+?) is (.+)$/i)){push("user","favorite_"+lc(m[1]).replace(/ /g,"_"),m[2]);return o}
+  return o;
+}
+
+/* ---------- question answering over the graph ---------- */
+function srcs(fs){var seen={},out=[];fs.forEach(function(f){if(f&&!seen[f.src]){seen[f.src]=1;out.push("“"+f.src+"”")}});return out.length?"Based on: "+out.join(", "):""}
+function find(name){var l=lc(name),hit=null;db.facts.forEach(function(f){[f.s,f.o].forEach(function(n){if(lc(n)===l)hit=n})});return hit}
+function hopAns(rel,prev){
+  var p=prev?prevOf("user",rel):cur("user",rel);
+  if(!p)return{t:"I don’t have "+(prev?"a previous ":"a ")+rel+" in memory."};
+  var c=cur(p.o,"lives_in");
+  if(!c)return{t:"I know your "+(prev?"previous ":"")+rel+" is "+p.o+", but not where they live.",ev:srcs([p])};
+  return{t:"Your "+(prev?"previous ":"")+rel+", "+p.o+", lives in "+c.o+".",ev:srcs([p,c])};
+}
+function listAns(r,pre,none){var a=all("user",r);return a.length?{t:pre+a.map(function(f){return f.o}).join(", ")+".",ev:srcs(a)}:{t:none}}
+function ask(raw){
+  var t=lc(raw).replace(/[’]/g,"'").replace(/[?!.\s]+$/,"").trim(),m,RP="(?:previous |former |old |last )?";
+  var prev=/\b(previous|former|old|last) /.test(t),f;
+  if(m=t.match(new RegExp("(?:where|which city|what city) (?:does|did|is|was) my "+RP+"("+REL+") (?:live|living|based|stay|stayed|lived)")))return hopAns(nr(m[1]),prev);
+  if(m=t.match(new RegExp("(?:who|what) (?:is|was|'s) my "+RP+"("+REL+")$"))){var r=nr(m[1]);f=prev?prevOf("user",r):cur("user",r);return f?{t:"Your "+(prev?"previous ":"")+r+" is "+f.o+".",ev:srcs([f])}:{t:"I don’t have that in memory yet."}}
+  if(m=t.match(/where does (\w+) live/)){var n=find(m[1]);f=n&&cur(n,"lives_in");return f?{t:n+" lives in "+f.o+".",ev:srcs([f])}:{t:"I don’t know where "+m[1]+" lives."}}
+  if(/where (do|am) i (live|based|living|stay)|which city do i live/.test(t)){f=cur("user","lives_in");return f?{t:"You live in "+f.o+".",ev:srcs([f])}:{t:"I don’t know where you live yet."}}
+  if(/where do i work|who do i work for/.test(t)){f=cur("user","works_at");var ro=cur("user","role");return f?{t:"You work at "+f.o+(ro?" as a "+ro.o:"")+".",ev:srcs([f,ro])}:{t:"I don’t know where you work yet."}}
+  if(/allerg/.test(t))return listAns("allergic_to","You’re allergic to ","I don’t have any allergies on record.");
+  if(/what do i (like|love|enjoy)/.test(t))return listAns("likes","You like ","I don’t know what you like yet.");
+  if(/what do i (hate|dislike)/.test(t))return listAns("dislikes","You dislike ","I don’t have any dislikes on record.");
+  if(/what am i learning/.test(t))return listAns("learning","You’re learning ","I don’t know what you’re learning.");
+  if(/what do i drink/.test(t)){f=cur("user","morning_drink");return f?{t:"Your morning drink is "+f.o+".",ev:srcs([f])}:{t:"I don’t know your morning drink."}}
+  if(/know about me|show memory|what do you remember|summary/.test(t)){
+    var a=db.facts.filter(function(x){return x.st==="active"});
+    return a.length?{t:a.map(function(x){return "• "+phr(x.s,x.r,x.o)}).join("\n")}:{t:"I don’t remember anything yet."};
+  }
+  if(/recommend|suggest/.test(t)){
+    var likes=all("user","likes"),al=all("user","allergic_to"),dl=all("user","dislikes");
+    if(!likes.length&&!al.length)return{t:"I don’t know enough about you yet. Tell me what you like or what you avoid."};
+    var out=[];
+    if(likes.length)out.push("Something built around "+likes.map(function(x){return x.o}).join(" or ")+" fits what you’ve told me.");
+    if(al.length)out.push("I’ll steer clear of "+al.map(function(x){return x.o}).join(", ")+" because of your allergy.");
+    if(dl.length)out.push("I’ll also avoid "+dl.map(function(x){return x.o}).join(", ")+".");
+    return{t:out.join(" "),ev:srcs(likes.concat(al,dl))};
+  }
+  return null;
+}
+
+/* ---------- chat ---------- */
+function reply(text){
+  var isQ=/\?/.test(text)||/^\s*(who|what|where|which|show|tell me|recommend|suggest|can you|do you)\b/i.test(text);
+  if(isQ){var a=ask(text);if(a)return a}
+  var sents=text.match(/[^.!?\n]+[.!?]*/g)||[],lines=[],learned=0;
+  sents.forEach(function(sn){
+    sn=sn.trim();if(!sn)return;
+    extract(sn).forEach(function(tr){
+      var r=addFact(tr[0],tr[1],tr[2],sn.replace(/[.!?]+$/,"")+".");
+      var what=phr(tr[0],tr[1],tr[2]);
+      if(r.k==="dup")lines.push("I already had that: "+what+".");
+      else if(r.k==="upd"){learned++;lines.push("Updated: "+what+" (replaces “"+r.old.o+"”, kept in history).")}
+      else{learned++;lines.push("Remembered: "+what+".")}
+    });
+  });
+  if(!lines.length)return{t:"I didn’t catch a fact or a question I can answer. Try “I live in Chennai”, “My manager is Meera”, or “What do you know about me?”"};
+  return{t:lines.join("\n")};
+}
+function send(text){
+  text=text.trim();if(!text)return;
+  log.push({u:1,t:text});var r=reply(text);log.push({u:0,t:r.t,ev:r.ev});save();render();
+}
+
+/* ---------- graph ---------- */
+function kind(n,F){
+  if(n==="user")return"user";
+  if(F.some(function(f){return f.s===n}))return"person";
+  var rels=F.filter(function(f){return f.o===n}).map(function(f){return f.r});
+  if(rels.some(function(r){return PEOPLE.indexOf(r)>-1}))return"person";
+  if(rels.indexOf("lives_in")>-1)return"place";
+  if(rels.indexOf("works_at")>-1)return"org";
+  return"thing";
+}
+var COL={user:"var(--ink)",person:"var(--c2)",place:"var(--c3)",org:"var(--c1)",thing:"var(--c0)"};
+function drawGraph(){
+  var F=db.facts.filter(function(f){return $("hist").checked||f.st==="active"});
+  if(!F.length){$("g").innerHTML='<text x="300" y="215" text-anchor="middle" class="nt" style="fill:var(--muted)">Nothing remembered yet. Say something about yourself.</text>';return}
+  var lvl={user:0},par={},q=["user"];
+  while(q.length){var c=q.shift();F.forEach(function(f){if(f.s===c&&!(f.o in lvl)){lvl[f.o]=lvl[c]+1;par[f.o]=c;q.push(f.o)}})}
+  var orph=[];
+  F.forEach(function(f){[f.s,f.o].forEach(function(n){if(!(n in lvl)){lvl[n]=2;par[n]=null;if(orph.indexOf(n)<0)orph.push(n)}})});
+  var pos={user:{x:300,y:215,a:0}},L1=Object.keys(lvl).filter(function(n){return lvl[n]===1});
+  L1.forEach(function(n,i){var a=-Math.PI/2+2*Math.PI*i/L1.length;pos[n]={a:a,x:300+120*Math.cos(a)*1.45,y:215+120*Math.sin(a)*.95}});
+  var kids={};
+  Object.keys(lvl).forEach(function(n){if(lvl[n]>=2&&par[n]){(kids[par[n]]=kids[par[n]]||[]).push(n)}});
+  function place(p){(kids[p]||[]).forEach(function(n,j,arr){
+    var a=(pos[p].a||0)+(j-(arr.length-1)/2)*.5,r=120+80*(lvl[n]-1);
+    pos[n]={a:a,x:300+r*Math.cos(a)*1.45,y:215+r*Math.sin(a)*.95};place(n)})}
+  L1.forEach(place);
+  orph.forEach(function(n,i){var a=Math.PI/5+2*Math.PI*i/Math.max(orph.length,1),r=190;pos[n]={a:a,x:300+r*Math.cos(a)*1.45,y:215+r*Math.sin(a)*.95}});
+  Object.keys(pos).forEach(function(n){pos[n].x=Math.max(70,Math.min(530,pos[n].x));pos[n].y=Math.max(26,Math.min(404,pos[n].y))});
+  var svg="",nodes=Object.keys(pos);
+  F.forEach(function(f){var a=pos[f.s],b=pos[f.o];if(!a||!b)return;
+    svg+='<line class="ed'+(f.st==="old"?" old":"")+'" x1="'+a.x+'" y1="'+a.y+'" x2="'+b.x+'" y2="'+b.y+'"/>';});
+  F.forEach(function(f){var a=pos[f.s],b=pos[f.o];if(!a||!b)return;
+    svg+='<text class="el" text-anchor="middle" x="'+((a.x+b.x)/2)+'" y="'+((a.y+b.y)/2+3)+'">'+esc((f.st==="old"?"was: ":"")+rl(f.r))+'</text>'});
+  nodes.forEach(function(n){var p=pos[n],k=kind(n,F),lab=nm(n),w=Math.max(44,lab.length*7+18),isU=k==="user";
+    svg+='<rect x="'+(p.x-w/2)+'" y="'+(p.y-13)+'" width="'+w+'" height="26" rx="13" style="fill:'+(isU?COL.user:"var(--card)")+';stroke:'+COL[k]+';stroke-width:2"/>'+
+         '<text class="nt" text-anchor="middle" x="'+p.x+'" y="'+(p.y+4)+'" style="fill:'+(isU?"var(--card)":"var(--ink)")+'">'+esc(lab)+'</text>'});
+  $("g").innerHTML=svg;
+}
+
+/* ---------- list, chat render ---------- */
+function drawList(){
+  if(!db.facts.length){$("list").innerHTML='<p class="empty">No memories yet.</p>';return}
+  $("list").innerHTML=db.facts.slice().reverse().map(function(f){
+    var body=editing===f.id?'<input type="text" id="ei" value="'+esc(f.o)+'" aria-label="New value">':
+      esc(nm(f.s))+' <span style="color:var(--muted)">'+esc(rl(f.r))+'</span> <b>'+esc(f.o)+'</b>'+(f.st==="old"?'<span class="tag">replaced</span>':'');
+    var acts=editing===f.id?'<button class="sm pri" data-a="save" data-i="'+f.id+'">Save</button><button class="sm" data-a="cancel">Cancel</button>':
+      '<button class="sm" data-a="edit" data-i="'+f.id+'" aria-label="Edit">Edit</button><button class="sm" data-a="del" data-i="'+f.id+'" aria-label="Delete">Delete</button>';
+    return'<div class="fact'+(f.st==="old"?" old":"")+'"><div class="t">'+body+'</div><div class="acts">'+acts+'</div></div>';
+  }).join("");
+  var ei=$("ei");if(ei){ei.focus();ei.addEventListener("keydown",function(e){if(e.key==="Enter")doSave(editing);if(e.key==="Escape"){editing=null;render()}})}
+}
+function doSave(id){var v=$("ei").value.trim();db.facts.forEach(function(f){if(f.id===id&&v)f.o=v});editing=null;save();render()}
+function drawChat(){
+  var el=$("log");
+  el.innerHTML=log.length?log.map(function(m){return'<div class="m '+(m.u?"u":"a")+'">'+esc(m.t)+(m.ev?'<span class="ev">'+esc(m.ev)+'</span>':"")+'</div>'}).join(""):'<div class="m a">Hi! Tell me about yourself: where you live, who your manager is, what you’re allergic to. Then ask me questions.</div>';
+  el.scrollTop=el.scrollHeight;
+}
+function render(){drawChat();drawGraph();drawList()}
+
+/* ---------- demo + recall check ---------- */
+var DEMO=["I just started work at Contoso as a designer.","I live in Chennai.","My manager is Meera.","Meera lives in Pune.","I’m allergic to peanuts.","I love hiking and filter coffee.","My sister Divya lives in Dubai.","I moved to Bangalore last month.","Meera left the team. My new manager is Arjun.","Arjun is based in Hyderabad.","I’m learning Rust."];
+var CHECKS=[["Where do I live?","Bangalore"],["Who is my manager?","Arjun"],["Where does my manager live?","Hyderabad"],["Where did my previous manager live?","Pune"],["What am I allergic to?","peanuts"],["Where does my sister live?","Dubai"],["What am I learning?","Rust"],["Where do I work?","Contoso"]];
+function runDemo(){
+  db={facts:[],n:1};log=[];editing=null;
+  DEMO.forEach(function(t){send(t)});
+  var ok=0,rows=CHECKS.map(function(c){var r=reply(c[0]),pass=lc(r.t).indexOf(lc(c[1]))>-1;if(pass)ok++;return'<tr><td>'+esc(c[0])+'</td><td>'+esc(c[1])+'</td><td class="'+(pass?"ok":"no")+'">'+(pass?"correct":"wrong")+'</td></tr>'}).join("");
+  $("check").innerHTML='<p style="margin:10px 0 0"><b>'+ok+' of '+CHECKS.length+'</b> answered correctly.</p><table class="chk"><tr><th>Question</th><th>Expected</th><th>Result</th></tr>'+rows+'</table><p class="note">These checks were written for the demo script, so they show the pipeline works end to end, not that it generalizes to free-form text.</p>';
+  save();render();
+}
+
+/* ---------- wiring ---------- */
+$("chips").innerHTML=["I live in Chennai","My manager is Meera","Meera lives in Pune","I’m allergic to peanuts","I moved to Bangalore","Where does my manager live?","What do you know about me?"].map(function(t){return'<button data-c="'+esc(t)+'">'+esc(t)+'</button>'}).join("");
+$("chips").addEventListener("click",function(e){var c=e.target.getAttribute("data-c");if(c)send(c)});
+$("send").addEventListener("click",function(){send($("inp").value);$("inp").value="";$("inp").focus()});
+$("inp").addEventListener("keydown",function(e){if(e.key==="Enter"){send($("inp").value);$("inp").value=""}});
+$("hist").addEventListener("change",drawGraph);
+$("demo").addEventListener("click",runDemo);
+$("clear").addEventListener("click",function(){if(confirm("Delete every memory?")){db={facts:[],n:1};log=[];editing=null;$("check").innerHTML="";save();render()}});
+$("list").addEventListener("click",function(e){
+  var a=e.target.getAttribute("data-a"),i=+e.target.getAttribute("data-i");if(!a)return;
+  if(a==="edit"){editing=i;drawList()}
+  else if(a==="cancel"){editing=null;drawList()}
+  else if(a==="save")doSave(i);
+  else if(a==="del"){db.facts=db.facts.filter(function(f){return f.id!==i});save();render()}
+});
+render();
+})();
+</script>
+</body>
+</html>
